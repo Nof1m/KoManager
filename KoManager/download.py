@@ -3,13 +3,13 @@
 import os
 import shutil
 import zipfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, TimeoutError
 import httpx
-from PySide6.QtCore import QThread, Signal
+from PyQt6.QtCore import QThread, pyqtSignal
 
 class DownloadThread(QThread):
-    progress_changed = Signal(int)
-    finished = Signal()
+    progress_changed = pyqtSignal(int)
+    finished = pyqtSignal()
 
     def __init__(self, capitulos, diretorio, formato_imagem):
         super().__init__()
@@ -70,14 +70,22 @@ def salvar_capitulo(capitulo, diretorio, formato_imagem):
     hash_ = imagens_url['chapter']['hash']
     pages = imagens_url['chapter']['data']
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         session = httpx.Client()
         futures = []
         for page in pages:
             futures.append(executor.submit(download_page, session, base_url, hash_, page, capitulo_dir))
 
-        for future in as_completed(futures):
-            future.result()
+        try:
+            wait(futures)
+        except TimeoutError as e:
+            print(f"Timeout error occurred: {e}")
+            
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            
+        finally:
+            session.close()
 
     if formato_imagem == "cbz":
         temp_files = [os.path.join(capitulo_dir, page) for page in os.listdir(capitulo_dir)]
